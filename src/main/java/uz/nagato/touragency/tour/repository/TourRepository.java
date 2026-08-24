@@ -5,7 +5,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.repository.query.Param;
 import uz.nagato.touragency.tour.entity.Tour;
 
 import java.util.Optional;
@@ -22,6 +25,11 @@ public interface TourRepository extends JpaRepository<Tour, Long>, JpaSpecificat
     @Override
     @EntityGraph(attributePaths = {"category", "destination"})
     Page<Tour> findAll(Specification<Tour> spec, Pageable pageable);
+
+    /** Relabels every tour not already on {@code currency}; amounts are untouched. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Tour t set t.currency = :currency where t.currency <> :currency")
+    int relabelCurrency(@Param("currency") String currency);
 
     boolean existsBySlug(String slug);
 

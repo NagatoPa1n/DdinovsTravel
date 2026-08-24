@@ -59,7 +59,7 @@ public class Tour extends BaseEntity {
     private BigDecimal discountPrice;
 
     @Column(nullable = false, length = 3)
-    private String currency = "USD";
+    private String currency = "UZS";
 
     @Column(name = "days", nullable = false)
     private int days;

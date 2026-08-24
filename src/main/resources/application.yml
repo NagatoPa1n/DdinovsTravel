@@ -34,12 +34,16 @@ app:
     dir: ${UPLOAD_DIR:uploads}
     public-url: ${UPLOAD_PUBLIC_URL:/api/media/files}
   cors:
-    allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
+    # The live site plus the local dev servers. Both the apex and www are listed: a browser
+    # sends whichever the visitor typed, and an unlisted one is refused with a 403.
+    allowed-origins: ${CORS_ORIGINS:https://ddinovstravel.uz,https://www.ddinovstravel.uz,http://localhost:3000,http://localhost:5173,http://localhost:4173}
   telegram:
     # Contact-form enquiries are delivered to this chat via the Bot API.
     # Token from @BotFather; chat-id is a numeric user/group id or @channelname.
-    bot-token: ${TELEGRAM_BOT_TOKEN:8848190186:AAEDlCGNARSfKcYwYtm3wCoLsRN4aVX7bR4}
-    chat-id: ${TELEGRAM_CHAT_ID:8970918226}
+    # Set both in the environment. With either missing, enquiries are logged and skipped
+    # rather than delivered -- the site keeps working.
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    chat-id: ${TELEGRAM_CHAT_ID:}
     timeout-ms: 6000
   translation:
     # Machine translation of stored content (tours, destinations, categories, pages)

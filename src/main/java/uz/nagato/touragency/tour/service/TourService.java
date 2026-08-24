@@ -128,7 +128,7 @@ public class TourService {
         tour.setDiscountPrice(request.discountPrice());
         tour.setCurrency(StringUtils.hasText(request.currency())
                 ? request.currency().trim().toUpperCase(Locale.ENGLISH)
-                : "USD");
+                : "UZS");
         tour.setDays(request.days());
         // A trip is normally one night shorter than its day count unless stated otherwise.
         tour.setNights(request.nights() != null ? request.nights() : Math.max(0, request.days() - 1));
