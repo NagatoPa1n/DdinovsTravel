@@ -6,12 +6,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import uz.nagato.touragency.auth.dto.AuthResponse;
 import uz.nagato.touragency.auth.dto.LoginRequest;
+import uz.nagato.touragency.auth.dto.PasswordChangeRequest;
+import uz.nagato.touragency.auth.dto.ProfileUpdateRequest;
 import uz.nagato.touragency.auth.dto.RefreshTokenRequest;
 import uz.nagato.touragency.auth.dto.RegisterRequest;
 import uz.nagato.touragency.auth.dto.UserResponse;
@@ -43,9 +46,15 @@ public class AuthController {
         return ApiResponse.ok(authService.refresh(request.refreshToken()));
     }
 
+    /**
+     * The body is optional: a client that only holds an access token (and discards it
+     * locally) can still call this without tripping a 400.
+     */
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(@Valid @RequestBody RefreshTokenRequest request) {
-        authService.logout(request.refreshToken());
+    public ApiResponse<Void> logout(@RequestBody(required = false) RefreshTokenRequest request) {
+        if (request != null && request.refreshToken() != null) {
+            authService.logout(request.refreshToken());
+        }
         return ApiResponse.message("Logged out");
     }
 
@@ -60,5 +69,19 @@ public class AuthController {
     @PreAuthorize("isAuthenticated()")
     public ApiResponse<UserResponse> me() {
         return ApiResponse.ok(UserResponse.from(userService.currentUser()));
+    }
+
+    @PutMapping("/profile")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<UserResponse> updateProfile(@Valid @RequestBody ProfileUpdateRequest request) {
+        return ApiResponse.ok("Profile updated",
+                authService.updateProfile(userService.currentUser(), request));
+    }
+
+    @PutMapping("/password")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<Void> changePassword(@Valid @RequestBody PasswordChangeRequest request) {
+        authService.changePassword(userService.currentUser(), request);
+        return ApiResponse.message("Password changed");
     }
 }

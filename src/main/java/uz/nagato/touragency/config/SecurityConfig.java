@@ -38,6 +38,8 @@ public class SecurityConfig {
             "/api/categories/**",
             "/api/destinations/**",
             "/api/pages/**",
+            // The storefront renders contact details and social links from settings.
+            "/api/settings/**",
             "/api/media/files/**",
             "/api/media/owner/**"
     };
@@ -47,6 +49,8 @@ public class SecurityConfig {
             "/api/auth/login",
             "/api/auth/refresh",
             "/api/auth/logout",
+            // The public website posts enquiries here; no account is involved.
+            "/api/contact",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html",

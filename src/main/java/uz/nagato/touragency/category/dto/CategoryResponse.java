@@ -12,6 +12,9 @@ public record CategoryResponse(
 ) {
 
     public static CategoryResponse from(Category category) {
+        if (category == null) {
+            return null;
+        }
         return new CategoryResponse(
                 category.getId(),
                 category.getName(),

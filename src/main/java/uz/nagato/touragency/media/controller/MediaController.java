@@ -24,12 +24,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import uz.nagato.touragency.common.response.ApiResponse;
 import uz.nagato.touragency.common.response.PageResponse;
+import uz.nagato.touragency.media.dto.BulkDeleteRequest;
 import uz.nagato.touragency.media.dto.MediaResponse;
 import uz.nagato.touragency.media.dto.MediaUpdateRequest;
 import uz.nagato.touragency.media.entity.OwnerType;
 import uz.nagato.touragency.media.service.MediaService;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/media")
@@ -38,7 +40,11 @@ public class MediaController {
 
     private final MediaService mediaService;
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    /**
+     * {@code /api/media} and {@code /api/media/upload} are the same endpoint; the second
+     * path exists because the admin uploader posts there.
+     */
+    @PostMapping(path = {"", "/upload"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ApiResponse<MediaResponse> upload(
@@ -53,8 +59,10 @@ public class MediaController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ApiResponse<PageResponse<MediaResponse>> list(
             @RequestParam(required = false) OwnerType ownerType,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String search,
             @PageableDefault(size = 24, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ApiResponse.ok(mediaService.list(ownerType, pageable));
+        return ApiResponse.ok(mediaService.list(ownerType, type, search, pageable));
     }
 
     @GetMapping("/owner/{ownerType}/{ownerId}")
@@ -66,10 +74,12 @@ public class MediaController {
     /** Public file download endpoint; the stored file name is the only accepted identifier. */
     @GetMapping("/files/{fileName}")
     public ResponseEntity<Resource> download(@PathVariable String fileName) {
-        Resource resource = mediaService.loadAsResource(fileName);
+        MediaService.StoredFile file = mediaService.loadAsResource(fileName);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + resource.getFilename() + "\"")
-                .body(resource);
+                .contentType(file.contentType())
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + file.resource().getFilename() + "\"")
+                .body(file.resource());
     }
 
     @PutMapping("/{id}")
@@ -84,5 +94,12 @@ public class MediaController {
     public ApiResponse<Void> delete(@PathVariable Long id) {
         mediaService.delete(id);
         return ApiResponse.message("Media deleted");
+    }
+
+    @PostMapping("/bulk-delete")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ApiResponse<Map<String, Integer>> bulkDelete(@RequestBody BulkDeleteRequest request) {
+        int removed = mediaService.deleteAll(request.ids());
+        return ApiResponse.ok("Files deleted", Map.of("deleted", removed));
     }
 }

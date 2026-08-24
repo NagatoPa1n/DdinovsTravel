@@ -8,6 +8,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import uz.nagato.touragency.category.entity.Category;
 import uz.nagato.touragency.category.service.CategoryService;
 import uz.nagato.touragency.common.exception.BadRequestException;
 import uz.nagato.touragency.common.exception.ConflictException;
@@ -21,13 +22,18 @@ import uz.nagato.touragency.media.service.MediaService;
 import uz.nagato.touragency.tour.dto.TourFilter;
 import uz.nagato.touragency.tour.dto.TourRequest;
 import uz.nagato.touragency.tour.dto.TourResponse;
+import uz.nagato.touragency.tour.entity.ItineraryDay;
 import uz.nagato.touragency.tour.entity.Tour;
+import uz.nagato.touragency.tour.entity.TourStatus;
 import uz.nagato.touragency.tour.repository.TourRepository;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -81,6 +87,14 @@ public class TourService {
         return withImages(tourRepository.save(tour));
     }
 
+    /** Publish or unpublish without round-tripping the whole tour. */
+    @Transactional
+    public TourResponse setStatus(Long id, TourStatus status) {
+        Tour tour = getEntity(id);
+        tour.setStatus(status);
+        return withImages(tourRepository.save(tour));
+    }
+
     @Transactional
     public void delete(Long id) {
         Tour tour = getEntity(id);
@@ -108,19 +122,63 @@ public class TourService {
 
         tour.setTitle(request.title());
         tour.setSlug(slug);
-        tour.setShortDescription(request.shortDescription());
+        tour.setExcerpt(request.excerpt());
         tour.setDescription(request.description());
         tour.setPrice(request.price());
         tour.setDiscountPrice(request.discountPrice());
-        tour.setDurationDays(request.durationDays());
-        tour.setMaxGroupSize(request.maxGroupSize());
+        tour.setCurrency(StringUtils.hasText(request.currency())
+                ? request.currency().trim().toUpperCase(Locale.ENGLISH)
+                : "USD");
+        tour.setDays(request.days());
+        // A trip is normally one night shorter than its day count unless stated otherwise.
+        tour.setNights(request.nights() != null ? request.nights() : Math.max(0, request.days() - 1));
+        tour.setGroupSize(request.groupSize());
         tour.setStartDate(request.startDate());
         tour.setEndDate(request.endDate());
-        tour.setCategory(categoryService.getEntity(request.categoryId()));
         tour.setDestination(destinationService.getEntity(request.destinationId()));
-        tour.setCoverImageUrl(request.coverImageUrl());
-        tour.setFeatured(request.featured() != null && request.featured());
-        tour.setActive(request.active() == null || request.active());
+
+        applyCategories(tour, request.categoryIds());
+
+        tour.setCoverImage(request.coverImage());
+        tour.setGallery(nullSafe(request.gallery()));
+        tour.setItinerary(renumber(request.itinerary()));
+        tour.setIncluded(nullSafe(request.included()));
+        tour.setExcluded(nullSafe(request.excluded()));
+        tour.setStatus(request.status());
+        tour.setFeatured(Boolean.TRUE.equals(request.featured()));
+        tour.setSeoTitle(request.seoTitle());
+        tour.setSeoDescription(request.seoDescription());
+    }
+
+    /** Keeps the single {@code category} column in step with the set: the first id wins. */
+    private void applyCategories(Tour tour, List<Long> categoryIds) {
+        Set<Category> resolved = new LinkedHashSet<>();
+        if (categoryIds != null) {
+            categoryIds.stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .map(categoryService::getEntity)
+                    .forEach(resolved::add);
+        }
+        tour.setCategories(resolved);
+        tour.setCategory(resolved.isEmpty() ? null : resolved.iterator().next());
+    }
+
+    /** Days are renumbered on save so gaps left by client-side reordering never persist. */
+    private List<ItineraryDay> renumber(List<ItineraryDay> itinerary) {
+        if (itinerary == null || itinerary.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<ItineraryDay> ordered = new ArrayList<>(itinerary.size());
+        for (int i = 0; i < itinerary.size(); i++) {
+            ItineraryDay day = itinerary.get(i);
+            ordered.add(new ItineraryDay(i + 1, day.title(), day.description()));
+        }
+        return ordered;
+    }
+
+    private <T> List<T> nullSafe(List<T> values) {
+        return values == null ? new ArrayList<>() : new ArrayList<>(values);
     }
 
     /** Builds the dynamic where-clause; every filter field is optional. */
@@ -129,10 +187,17 @@ public class TourService {
             List<Predicate> predicates = new ArrayList<>();
 
             if (filter.onlyActive()) {
-                predicates.add(cb.isTrue(root.get("active")));
+                predicates.add(cb.equal(root.get("status"), TourStatus.PUBLISHED));
+            }
+            if (filter.status() != null) {
+                predicates.add(cb.equal(root.get("status"), filter.status()));
             }
             if (filter.categoryId() != null) {
-                predicates.add(cb.equal(root.get("category").get("id"), filter.categoryId()));
+                // Matches the many-to-many set, not only the primary category.
+                predicates.add(cb.equal(root.join("categories").get("id"), filter.categoryId()));
+                if (query != null) {
+                    query.distinct(true);
+                }
             }
             if (filter.destinationId() != null) {
                 predicates.add(cb.equal(root.get("destination").get("id"), filter.destinationId()));
@@ -144,10 +209,10 @@ public class TourService {
                 predicates.add(cb.lessThanOrEqualTo(root.get("price"), filter.maxPrice()));
             }
             if (filter.minDuration() != null) {
-                predicates.add(cb.greaterThanOrEqualTo(root.get("durationDays"), filter.minDuration()));
+                predicates.add(cb.greaterThanOrEqualTo(root.get("days"), filter.minDuration()));
             }
             if (filter.maxDuration() != null) {
-                predicates.add(cb.lessThanOrEqualTo(root.get("durationDays"), filter.maxDuration()));
+                predicates.add(cb.lessThanOrEqualTo(root.get("days"), filter.maxDuration()));
             }
             if (filter.featured() != null) {
                 predicates.add(cb.equal(root.get("featured"), filter.featured()));
@@ -156,11 +221,10 @@ public class TourService {
                 String like = "%" + filter.search().trim().toLowerCase(Locale.ENGLISH) + "%";
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("title")), like),
-                        cb.like(cb.lower(cb.coalesce(root.get("shortDescription"), "")), like),
+                        cb.like(cb.lower(cb.coalesce(root.get("excerpt"), "")), like),
                         cb.like(cb.lower(root.get("destination").get("name")), like),
                         cb.like(cb.lower(root.get("destination").get("country")), like)));
             }
-
             return cb.and(predicates.toArray(new Predicate[0]));
         };
     }

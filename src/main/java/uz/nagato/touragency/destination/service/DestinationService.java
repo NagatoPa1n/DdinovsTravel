@@ -72,10 +72,15 @@ public class DestinationService {
     private void apply(Destination destination, DestinationRequest request, String slug) {
         destination.setName(request.name());
         destination.setSlug(slug);
-        destination.setCountry(request.country());
+        // The column is NOT NULL but the admin form leaves country optional.
+        destination.setCountry(request.country() == null ? "" : request.country().trim());
         destination.setCity(request.city());
         destination.setDescription(request.description());
-        destination.setCoverImageUrl(request.coverImageUrl());
+        destination.setImage(request.image());
+        destination.setCoverImageUrl(request.coverImageUrl() != null
+                ? request.coverImageUrl()
+                : (request.image() == null ? null : request.image().url()));
+        destination.setFeatured(Boolean.TRUE.equals(request.featured()));
         destination.setLatitude(request.latitude());
         destination.setLongitude(request.longitude());
         destination.setActive(request.active() == null || request.active());

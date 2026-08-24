@@ -47,6 +47,10 @@ public class Media extends BaseEntity {
     @Column(name = "alt_text")
     private String altText;
 
+    /** Human-facing label shown in the media library, independent of the stored file name. */
+    @Column(name = "title")
+    private String title;
+
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;
 

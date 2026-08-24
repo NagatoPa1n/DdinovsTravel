@@ -1,12 +1,19 @@
 package uz.nagato.touragency.media.service;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.http.InvalidMediaTypeException;
+import org.springframework.http.MediaType;
 import org.springframework.core.io.UrlResource;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -28,6 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -43,7 +51,9 @@ import java.util.stream.Collectors;
 public class MediaService {
 
     private static final List<String> ALLOWED_CONTENT_TYPES = List.of(
-            "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml", "application/pdf");
+            "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml", "application/pdf",
+            // The media library offers a video filter and renders video previews.
+            "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo");
 
     private final MediaRepository mediaRepository;
     private final UserService userService;
@@ -108,10 +118,48 @@ public class MediaService {
     }
 
     public PageResponse<MediaResponse> list(OwnerType ownerType, Pageable pageable) {
-        var page = ownerType == null
-                ? mediaRepository.findAll(pageable)
-                : mediaRepository.findAllByOwnerType(ownerType, pageable);
-        return PageResponse.of(page.map(MediaResponse::from));
+        return list(ownerType, null, null, pageable);
+    }
+
+    /**
+     * Library listing.
+     *
+     * @param type coarse bucket — {@code image}, {@code video} or {@code file}
+     * @param search matched against the uploaded file name and title
+     */
+    public PageResponse<MediaResponse> list(OwnerType ownerType, String type, String search, Pageable pageable) {
+        Specification<Media> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (ownerType != null) {
+                predicates.add(cb.equal(root.get("ownerType"), ownerType));
+            }
+            if (StringUtils.hasText(type)) {
+                predicates.add(contentTypePredicate(root, cb, type.trim().toLowerCase(Locale.ENGLISH)));
+            }
+            if (StringUtils.hasText(search)) {
+                String like = "%" + search.trim().toLowerCase(Locale.ENGLISH) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("originalName")), like),
+                        cb.like(cb.lower(cb.coalesce(root.get("title"), "")), like),
+                        cb.like(cb.lower(cb.coalesce(root.get("altText"), "")), like)));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+        return PageResponse.of(mediaRepository.findAll(spec, pageable).map(MediaResponse::from));
+    }
+
+    /** "file" means anything that is neither an image nor a video. */
+    private Predicate contentTypePredicate(Root<Media> root, CriteriaBuilder cb, String type) {
+        Expression<String> contentType = cb.lower(cb.coalesce(root.get("contentType"), ""));
+        return switch (type) {
+            case "image" -> cb.like(contentType, "image/%");
+            case "video" -> cb.like(contentType, "video/%");
+            case "file" -> cb.and(
+                    cb.notLike(contentType, "image/%"),
+                    cb.notLike(contentType, "video/%"));
+            default -> cb.conjunction();
+        };
     }
 
     public List<MediaResponse> findByOwner(OwnerType ownerType, Long ownerId) {
@@ -139,13 +187,39 @@ public class MediaService {
             media.setOwnerType(request.ownerType());
             media.setOwnerId(request.ownerId());
         }
-        if (request.altText() != null) {
-            media.setAltText(request.altText());
+        if (request.resolvedAltText() != null) {
+            media.setAltText(request.resolvedAltText());
+        }
+        if (request.title() != null) {
+            media.setTitle(request.title());
         }
         if (request.sortOrder() != null) {
             media.setSortOrder(request.sortOrder());
         }
         return MediaResponse.from(mediaRepository.save(media));
+    }
+
+    /**
+     * Deletes several files in one call. Missing ids are skipped rather than failing the
+     * batch, so a stale selection in the library still clears the rows that do exist.
+     *
+     * @return how many rows were actually removed
+     */
+    @Transactional
+    public int deleteAll(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        List<Media> found = mediaRepository.findAllById(ids);
+        found.forEach(media -> {
+            try {
+                Files.deleteIfExists(storageRoot.resolve(media.getFileName()).normalize());
+            } catch (IOException e) {
+                log.warn("Could not delete file {} from disk", media.getFileName(), e);
+            }
+        });
+        mediaRepository.deleteAll(found);
+        return found.size();
     }
 
     @Transactional
@@ -159,8 +233,18 @@ public class MediaService {
         mediaRepository.delete(media);
     }
 
-    /** Loads a stored file for download, rejecting any path that escapes the storage root. */
-    public Resource loadAsResource(String fileName) {
+    /** A stored file together with the type it has to be served as. */
+    public record StoredFile(Resource resource, MediaType contentType) {
+    }
+
+    /**
+     * Loads a stored file for download, rejecting any path that escapes the storage root.
+     *
+     * <p>The content type travels with the bytes: responses carry
+     * {@code X-Content-Type-Options: nosniff}, so a missing or wrong type is not something
+     * the browser will look past — an image served as JSON simply does not render.
+     */
+    public StoredFile loadAsResource(String fileName) {
         Media media = mediaRepository.findByFileName(fileName)
                 .orElseThrow(() -> new NotFoundException("File not found: " + fileName));
         Path target = storageRoot.resolve(media.getFileName()).normalize();
@@ -168,9 +252,38 @@ public class MediaService {
             throw new NotFoundException("File not found: " + fileName);
         }
         try {
-            return new UrlResource(target.toUri());
+            return new StoredFile(new UrlResource(target.toUri()), contentTypeOf(media, target));
         } catch (IOException e) {
             throw new NotFoundException("File not found: " + fileName);
+        }
+    }
+
+    /** The type recorded at upload, else whatever the file itself says, else raw bytes. */
+    private MediaType contentTypeOf(Media media, Path target) {
+        MediaType recorded = parseOrNull(media.getContentType());
+        if (recorded != null) {
+            return recorded;
+        }
+        try {
+            MediaType probed = parseOrNull(Files.probeContentType(target));
+            if (probed != null) {
+                return probed;
+            }
+        } catch (IOException e) {
+            // Fall through to the generic type.
+        }
+        return MediaType.APPLICATION_OCTET_STREAM;
+    }
+
+    /** Never throws: a malformed stored type must not turn into a 500 on a public URL. */
+    private MediaType parseOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return MediaType.parseMediaType(value);
+        } catch (InvalidMediaTypeException e) {
+            return null;
         }
     }
 

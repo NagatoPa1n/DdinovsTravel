@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.nagato.touragency.auth.dto.AuthResponse;
 import uz.nagato.touragency.auth.dto.LoginRequest;
+import uz.nagato.touragency.auth.dto.PasswordChangeRequest;
+import uz.nagato.touragency.auth.dto.ProfileUpdateRequest;
 import uz.nagato.touragency.auth.dto.RegisterRequest;
 import uz.nagato.touragency.auth.dto.UserResponse;
 import uz.nagato.touragency.auth.entity.RefreshToken;
@@ -92,6 +94,39 @@ public class AuthService {
     }
 
     public void logoutEverywhere(User user) {
+        refreshTokenRepository.revokeAllForUser(user);
+    }
+
+    /** Updates the signed-in user's own name, email and phone. */
+    public UserResponse updateProfile(User user, ProfileUpdateRequest request) {
+        String email = request.email().trim().toLowerCase();
+        if (!email.equalsIgnoreCase(user.getEmail())
+                && userRepository.existsByEmailIgnoreCase(email)) {
+            throw new ConflictException("Email is already registered: " + email);
+        }
+
+        user.setFullName(request.name().trim());
+        user.setEmail(email);
+        if (request.phone() != null) {
+            user.setPhone(request.phone().trim());
+        }
+        return UserResponse.from(userRepository.save(user));
+    }
+
+    /**
+     * Changes the signed-in user's password after re-checking the current one.
+     * Every refresh token is revoked so other sessions cannot keep the old credentials alive.
+     */
+    public void changePassword(User user, PasswordChangeRequest request) {
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPassword())) {
+            throw new BadRequestException("New password must differ from the current one");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
         refreshTokenRepository.revokeAllForUser(user);
     }
 

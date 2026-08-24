@@ -9,11 +9,14 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import uz.nagato.touragency.common.response.ApiResponse;
 
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 @Slf4j
@@ -35,6 +38,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleServiceUnavailable(ServiceUnavailableException ex) {
+        return build(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new LinkedHashMap<>();
@@ -42,6 +50,25 @@ public class GlobalExceptionHandler {
             errors.putIfAbsent(error.getField(), error.getDefaultMessage());
         }
         return ResponseEntity.badRequest().body(ApiResponse.error("Validation failed", errors));
+    }
+
+    /**
+     * A query parameter that will not bind is the caller's mistake, so answer 400 and name the
+     * accepted values instead of letting it fall through to the catch-all 500.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        Class<?> required = ex.getRequiredType();
+        String detail = required != null && required.isEnum()
+                ? "expected one of: " + String.join(", ", enumValues(required))
+                : "expected " + (required != null ? required.getSimpleName() : "a different type");
+        return build(HttpStatus.BAD_REQUEST, "Invalid value for '" + ex.getName() + "': " + detail);
+    }
+
+    private static java.util.List<String> enumValues(Class<?> enumType) {
+        return Arrays.stream(enumType.getEnumConstants())
+                .map(constant -> ((Enum<?>) constant).name().toLowerCase(Locale.ENGLISH))
+                .toList();
     }
 
     @ExceptionHandler(AuthenticationException.class)

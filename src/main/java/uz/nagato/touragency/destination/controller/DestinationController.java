@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -22,6 +23,8 @@ import uz.nagato.touragency.common.response.PageResponse;
 import uz.nagato.touragency.destination.dto.DestinationRequest;
 import uz.nagato.touragency.destination.dto.DestinationResponse;
 import uz.nagato.touragency.destination.service.DestinationService;
+import uz.nagato.touragency.translation.RequestLanguage;
+import uz.nagato.touragency.translation.service.ContentTranslator;
 
 @RestController
 @RequestMapping("/api/destinations")
@@ -29,13 +32,24 @@ import uz.nagato.touragency.destination.service.DestinationService;
 public class DestinationController {
 
     private final DestinationService destinationService;
+    private final RequestLanguage requestLanguage;
+    private final ContentTranslator contentTranslator;
 
     @GetMapping
     public ApiResponse<PageResponse<DestinationResponse>> list(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "true") boolean onlyActive,
+            @RequestParam(required = false) String lang,
+            @RequestHeader(value = "Accept-Language", required = false) String acceptLanguage,
             @PageableDefault(size = 12, sort = "name", direction = Sort.Direction.ASC) Pageable pageable) {
-        return ApiResponse.ok(destinationService.search(search, onlyActive, pageable));
+        PageResponse<DestinationResponse> page = destinationService.search(search, onlyActive, pageable);
+        String language = requestLanguage.resolve(lang, acceptLanguage);
+        if (language == null) {
+            return ApiResponse.ok(page);
+        }
+        return ApiResponse.ok(new PageResponse<>(
+                contentTranslator.translateDestinations(page.content(), language),
+                page.page(), page.size(), page.totalElements(), page.totalPages(), page.last()));
     }
 
     @GetMapping("/{id}")
@@ -44,8 +58,13 @@ public class DestinationController {
     }
 
     @GetMapping("/slug/{slug}")
-    public ApiResponse<DestinationResponse> bySlug(@PathVariable String slug) {
-        return ApiResponse.ok(destinationService.findBySlug(slug));
+    public ApiResponse<DestinationResponse> bySlug(
+            @PathVariable String slug,
+            @RequestParam(required = false) String lang,
+            @RequestHeader(value = "Accept-Language", required = false) String acceptLanguage) {
+        DestinationResponse destination = destinationService.findBySlug(slug);
+        return ApiResponse.ok(contentTranslator.translateDestination(
+                destination, requestLanguage.resolve(lang, acceptLanguage)));
     }
 
     @PostMapping

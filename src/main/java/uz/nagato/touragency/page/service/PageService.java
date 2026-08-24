@@ -11,6 +11,7 @@ import uz.nagato.touragency.page.dto.PageRequest;
 import uz.nagato.touragency.page.entity.Page;
 import uz.nagato.touragency.page.repository.PageRepository;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 
 @Service
@@ -62,9 +63,29 @@ public class PageService {
         return PageDto.from(pageRepository.save(page));
     }
 
+    /**
+     * Saves the page at {@code slug}, creating it if it does not exist yet.
+     * <p>
+     * The built-in pages (home, about, contact) are addressed by slug from the admin UI
+     * and are never explicitly created, so the first save has to be the one that creates them.
+     */
+    @Transactional
+    public PageDto saveBySlug(String slug, PageRequest request) {
+        Page page = pageRepository.findBySlug(slug).orElseGet(Page::new);
+        apply(page, request, slug);
+        return PageDto.from(pageRepository.save(page));
+    }
+
     @Transactional
     public void delete(Long id) {
         pageRepository.delete(getEntity(id));
+    }
+
+    @Transactional
+    public void deleteBySlug(String slug) {
+        Page page = pageRepository.findBySlug(slug)
+                .orElseThrow(() -> new NotFoundException("Page not found with slug: " + slug));
+        pageRepository.delete(page);
     }
 
     private Page getEntity(Long id) {
@@ -75,11 +96,12 @@ public class PageService {
     private void apply(Page page, PageRequest request, String slug) {
         page.setTitle(request.title());
         page.setSlug(slug);
-        page.setContent(request.content());
+        page.setBody(request.body());
+        page.setContent(request.content() == null ? new LinkedHashMap<>() : request.content());
         page.setExcerpt(request.excerpt());
-        page.setMetaTitle(request.metaTitle());
-        page.setMetaDescription(request.metaDescription());
-        page.setPublished(request.published() != null && request.published());
+        page.setMetaTitle(request.resolvedMetaTitle());
+        page.setMetaDescription(request.resolvedMetaDescription());
+        page.setPublished(request.resolvedPublished());
         page.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
     }
 }

@@ -1,13 +1,17 @@
 server:
-  port: 2121
+  # 2121 is published by the telegram-app Docker container on this machine, so the
+  # app could not bind it. Override with SERVER_PORT if 8080 is taken instead.
+  port: ${SERVER_PORT:8080}
 
 spring:
   application:
     name: DdinovsTravel
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:DdinovsTravel}
-    username: postgres
-    password: bm040321
+    username: ${DB_USER:postgres}
+    # Set DB_PASSWORD in the environment. Never commit the real value: this file is
+    # tracked in a public repository.
+    password: ${DB_PASSWORD:postgres}
   jpa:
     hibernate:
       ddl-auto: update
@@ -31,6 +35,28 @@ app:
     public-url: ${UPLOAD_PUBLIC_URL:/api/media/files}
   cors:
     allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
+  telegram:
+    # Contact-form enquiries are delivered to this chat via the Bot API.
+    # Token from @BotFather; chat-id is a numeric user/group id or @channelname.
+    bot-token: ${TELEGRAM_BOT_TOKEN:8848190186:AAEDlCGNARSfKcYwYtm3wCoLsRN4aVX7bR4}
+    chat-id: ${TELEGRAM_CHAT_ID:8970918226}
+    timeout-ms: 6000
+  translation:
+    # Machine translation of stored content (tours, destinations, categories, pages)
+    # via the Google Cloud Translation API. Disable with TRANSLATION_ENABLED=false; the site then
+    # simply serves the text as authored.
+    enabled: ${TRANSLATION_ENABLED:true}
+    # Set TRANSLATION_API_KEY in the environment. With no key the service simply stays
+    # inactive and the site serves content as authored.
+    api-key: ${TRANSLATION_API_KEY:}
+    # Language the content is written in. Requests for this language skip translation.
+    source-language: ${TRANSLATION_SOURCE_LANG:uz}
+    target-languages: en,ru,uz
+    # Results are cached in the translation_cache table, so each distinct string is
+    # only ever paid for once per language.
+    batch-size: 64
+    max-chars-per-text: 12000
+    timeout-ms: 6000
   admin:
     email: ${ADMIN_EMAIL:admin@ddinovstravel.uz}
     password: ${ADMIN_PASSWORD:admin123}
