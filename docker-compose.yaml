@@ -1,0 +1,38 @@
+name: ddinovstravel
+
+services:
+  app:
+    build:
+      context: .
+    image: ddinovstravel-api
+    restart: unless-stoppe
+    environment:
+      DB_HOST: 135.125.196.236:
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-DdinovsTravel}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-mirik0722}
+      # HS256 needs at least 32 characters; the dev default in application.yml
+      # must not reach production, hence the hard failure when it is unset.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env - at least 32 characters}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@ddinovstravel.uz}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://ddinovstravel.uz,https://www.ddinovstravel.uz}
+      UPLOAD_DIR: /app/uploads
+      UPLOAD_PUBLIC_URL: ${UPLOAD_PUBLIC_URL:-/api/media/files}
+      # Contact-form delivery and machine translation both degrade gracefully
+      # when their credentials are absent.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TRANSLATION_ENABLED: ${TRANSLATION_ENABLED:-true}
+      TRANSLATION_API_KEY: ${TRANSLATION_API_KEY:-}
+      TRANSLATION_SOURCE_LANG: ${TRANSLATION_SOURCE_LANG:-uz}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=75}
+    ports:
+      # The container always listens on 8080; APP_PORT only moves the host side.
+      - "${APP_PORT:-3031}:8080"
+    volumes:
+      - uploads:/app/uploads
+
+volumes:
+  uploads:
