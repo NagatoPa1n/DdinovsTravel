@@ -40,3 +40,4 @@ EXPOSE 8080
 # /v3/api-docs is permitted without a token (SecurityConfig.PUBLIC_ANY), so the
 # probe needs no credentials. start-period covers Hibernate's schema update and
 # the admin seeding on first boot.
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
