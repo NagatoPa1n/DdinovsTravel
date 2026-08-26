@@ -7,11 +7,11 @@ services:
     image: ddinovstravel-api
     restart: unless-stopped
     environment:
-      DB_HOST: 135.125.196.236
+      DB_HOST: 127.0.0.1
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-DdinovsTravel}
       DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-mirik0722}
+      DB_PASSWORD: ${DB_PASSWORD:-test}
       # HS256 needs at least 32 characters; the dev default in application.yml
       # must not reach production, hence the hard failure when it is unset.
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env - at least 32 characters}
