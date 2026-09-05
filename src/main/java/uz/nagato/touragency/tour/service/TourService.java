@@ -1,5 +1,6 @@
 package uz.nagato.touragency.tour.service;
 
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -181,6 +182,11 @@ public class TourService {
         return values == null ? new ArrayList<>() : new ArrayList<>(values);
     }
 
+    /** Slugs are compared case-insensitively, so a link that shouts still matches. */
+    private static String slug(String value) {
+        return value.trim().toLowerCase(Locale.ENGLISH);
+    }
+
     /** Builds the dynamic where-clause; every filter field is optional. */
     private Specification<Tour> toSpecification(TourFilter filter) {
         return (root, query, cb) -> {
@@ -192,15 +198,27 @@ public class TourService {
             if (filter.status() != null) {
                 predicates.add(cb.equal(root.get("status"), filter.status()));
             }
-            if (filter.categoryId() != null) {
-                // Matches the many-to-many set, not only the primary category.
-                predicates.add(cb.equal(root.join("categories").get("id"), filter.categoryId()));
+            if (filter.categoryId() != null || StringUtils.hasText(filter.categorySlug())) {
+                // Matches the many-to-many set, not only the primary category. Joined once
+                // even when both forms are supplied, so they narrow the same category
+                // rather than demanding the tour sit in two.
+                Join<Tour, Category> categories = root.join("categories");
+                if (filter.categoryId() != null) {
+                    predicates.add(cb.equal(categories.get("id"), filter.categoryId()));
+                }
+                if (StringUtils.hasText(filter.categorySlug())) {
+                    predicates.add(cb.equal(cb.lower(categories.get("slug")), slug(filter.categorySlug())));
+                }
                 if (query != null) {
                     query.distinct(true);
                 }
             }
             if (filter.destinationId() != null) {
                 predicates.add(cb.equal(root.get("destination").get("id"), filter.destinationId()));
+            }
+            if (StringUtils.hasText(filter.destinationSlug())) {
+                predicates.add(cb.equal(
+                        cb.lower(root.get("destination").get("slug")), slug(filter.destinationSlug())));
             }
             if (filter.minPrice() != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("price"), filter.minPrice()));

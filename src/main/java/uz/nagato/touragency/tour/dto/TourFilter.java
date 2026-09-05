@@ -9,6 +9,16 @@ public record TourFilter(
         String search,
         Long categoryId,
         Long destinationId,
+
+        /**
+         * Slug equivalents of the two id filters above.
+         *
+         * The public site links destinations and categories by slug -- it never has the
+         * database id to hand -- so the list endpoint accepts either. Sending neither
+         * leaves the filter off.
+         */
+        String categorySlug,
+        String destinationSlug,
         BigDecimal minPrice,
         BigDecimal maxPrice,
         Integer minDuration,

@@ -50,6 +50,9 @@ public class TourController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) Long destinationId,
+            // The public site knows destinations and categories by slug, not by id.
+            @RequestParam(required = false) String destination,
+            @RequestParam(required = false) String category,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) Integer minDuration,
@@ -61,8 +64,9 @@ public class TourController {
             @RequestHeader(value = "Accept-Language", required = false) String acceptLanguage,
             @PageableDefault(size = 10, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
 
-        TourFilter filter = new TourFilter(search, categoryId, destinationId, minPrice, maxPrice,
-                minDuration, maxDuration, featured, status, resolveOnlyActive(onlyActive));
+        TourFilter filter = new TourFilter(search, categoryId, destinationId, category, destination,
+                minPrice, maxPrice, minDuration, maxDuration, featured, status,
+                resolveOnlyActive(onlyActive));
 
         PageResponse<TourResponse> page = tourService.search(filter, pageable);
         String language = requestLanguage.resolve(lang, acceptLanguage);
