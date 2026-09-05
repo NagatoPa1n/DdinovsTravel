@@ -21,8 +21,13 @@ spring:
         format_sql: true
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 15MB
+      # PNG is lossless, so a screenshot or photo that is 2-3MB as JPEG routinely lands
+      # in the teens as a PNG. The old 10MB cap refused those while letting the JPEG
+      # equivalent through, which read as "PNG uploads are broken". Keep this in step
+      # with MAX_UPLOAD_BYTES in the admin uploader, which pre-checks the same limit.
+      max-file-size: 25MB
+      # Headroom over max-file-size for the multipart envelope and the other form parts.
+      max-request-size: 30MB
 
 app:
   jwt:
